@@ -1,0 +1,371 @@
+// FILE: backend/src/controllers/collegeController.js
+const pool = require('../config/db');
+
+// --- Constants ---
+const DEFAULT_WEIGHTS = { rating: 0.25, placement: 0.3, fees: 0.2, rankFit: 0.25 };
+
+// Rank tier definitions: maps student rank ranges to expected college quality
+const RANK_TIERS = [
+  { maxRank: 1000,  label: 'Top 1000',    expectedRating: 4.7, expectedPlacement: 93 },
+  { maxRank: 5000,  label: 'Top 5000',    expectedRating: 4.3, expectedPlacement: 85 },
+  { maxRank: 20000, label: 'Top 20000',   expectedRating: 4.0, expectedPlacement: 78 },
+  { maxRank: 50000, label: 'Top 50000',   expectedRating: 3.8, expectedPlacement: 72 },
+  { maxRank: Infinity, label: 'Open',     expectedRating: 3.5, expectedPlacement: 65 },
+];
+
+// Simple in-memory cache for locations (avoids repeated DB calls for static data)
+let locationsCache = null;
+let locationsCacheTime = 0;
+const LOCATIONS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+// --- Helpers ---
+
+function getRankTier(rank) {
+  return RANK_TIERS.find(tier => rank <= tier.maxRank) || RANK_TIERS[RANK_TIERS.length - 1];
+}
+
+/**
+ * Calculate how well a college matches the student's rank tier.
+ * Returns a value between 0.0 (poor match) and 1.0 (excellent match).
+ */
+function calculateRankCompatibility(college, rank) {
+  const tier = getRankTier(rank);
+
+  // How close is the college to the tier's expected quality?
+  const ratingDiff = college.rating - tier.expectedRating;
+  const placementDiff = college.placement_percentage - tier.expectedPlacement;
+
+  // Positive diff = college exceeds expectations, negative = below
+  // Normalize to 0-1 range. Colleges meeting or exceeding expectations get 0.7-1.0
+  const ratingFit = Math.max(0, Math.min(1, 0.5 + (ratingDiff / 2)));
+  const placementFit = Math.max(0, Math.min(1, 0.5 + (placementDiff / 30)));
+
+  // Penalize overreach: if rank is very high (e.g., 80000) but college expects top-tier,
+  // the fit should be lower. This is already handled since ratingDiff will be negative.
+  return (ratingFit * 0.5) + (placementFit * 0.5);
+}
+
+function normalizeWeights(weights) {
+  if (!weights || typeof weights !== 'object') {
+    return { ...DEFAULT_WEIGHTS };
+  }
+
+  const rating = parseFloat(weights.rating);
+  const placement = parseFloat(weights.placement);
+  const fees = parseFloat(weights.fees);
+  const rankFit = parseFloat(weights.rankFit);
+
+  if (isNaN(rating) || isNaN(placement) || isNaN(fees) || isNaN(rankFit)) {
+    console.warn('Invalid weights, using defaults:', weights);
+    return { ...DEFAULT_WEIGHTS };
+  }
+
+  const sum = rating + placement + fees + rankFit;
+
+  if (sum <= 0 || !isFinite(sum)) {
+    return { ...DEFAULT_WEIGHTS };
+  }
+
+  return {
+    rating: rating / sum,
+    placement: placement / sum,
+    fees: fees / sum,
+    rankFit: rankFit / sum,
+  };
+}
+
+// --- Controllers ---
+
+async function getColleges(req, res) {
+  try {
+    const { search, location, maxFees } = req.query;
+
+    let query = 'SELECT * FROM colleges WHERE 1=1';
+    const values = [];
+    let index = 1;
+
+    if (search) {
+      values.push(`%${search}%`);
+      query += ` AND LOWER(name) LIKE LOWER($${index++})`;
+    }
+
+    if (location) {
+      values.push(location);
+      query += ` AND LOWER(location) = LOWER($${index++})`;
+    }
+
+    if (maxFees && !isNaN(maxFees)) {
+      values.push(parseInt(maxFees));
+      query += ` AND fees <= $${index++}`;
+    }
+
+    query += ' ORDER BY name ASC LIMIT 50';
+
+    const result = await pool.query(query, values);
+
+    res.json({
+      success: true,
+      count: result.rows.length,
+      data: result.rows
+    });
+
+  } catch (err) {
+    console.error('❌ ERROR getColleges:', err.message);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch colleges. Please try again.'
+    });
+  }
+}
+
+async function getCollegeById(req, res) {
+  try {
+    const { id } = req.params;
+
+    if (isNaN(id)) {
+      return res.status(400).json({ success: false, error: 'Invalid ID' });
+    }
+
+    const result = await pool.query(
+      'SELECT * FROM colleges WHERE id = $1',
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'College not found' });
+    }
+
+    res.json({
+      success: true,
+      data: result.rows[0]
+    });
+
+  } catch (err) {
+    console.error('❌ ERROR getCollegeById:', err.message);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch college details.'
+    });
+  }
+}
+
+async function getLocations(req, res) {
+  try {
+    // Return cached result if still valid
+    if (locationsCache && (Date.now() - locationsCacheTime < LOCATIONS_CACHE_TTL)) {
+      return res.json({
+        success: true,
+        count: locationsCache.length,
+        data: locationsCache,
+      });
+    }
+
+    const result = await pool.query(
+      'SELECT DISTINCT location FROM colleges ORDER BY location ASC'
+    );
+
+    const locations = result.rows.map(row => row.location);
+
+    // Update cache
+    locationsCache = locations;
+    locationsCacheTime = Date.now();
+
+    res.json({
+      success: true,
+      count: locations.length,
+      data: locations,
+    });
+
+  } catch (err) {
+    console.error('❌ ERROR getLocations:', err.message);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch locations.'
+    });
+  }
+}
+
+async function compareColleges(req, res) {
+  try {
+    let { collegeIds } = req.body;
+
+    if (!Array.isArray(collegeIds) || collegeIds.length < 2) {
+      return res.status(400).json({
+        success: false,
+        error: 'Provide 2-3 college IDs'
+      });
+    }
+
+    collegeIds = [...new Set(collegeIds)].map(Number);
+
+    const result = await pool.query(
+      'SELECT * FROM colleges WHERE id = ANY($1::int[])',
+      [collegeIds]
+    );
+
+    res.json({
+      success: true,
+      data: result.rows
+    });
+
+  } catch (err) {
+    console.error('❌ ERROR compare:', err.message);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to compare colleges.'
+    });
+  }
+}
+
+async function predictColleges(req, res) {
+  try {
+    const { rank, budget, location, weights } = req.body;
+
+    // --- Input validation ---
+    if (!rank || !budget) {
+      return res.status(400).json({
+        success: false,
+        error: 'Rank and budget are required'
+      });
+    }
+
+    if (typeof rank !== 'number' || rank < 1 || rank > 100000) {
+      return res.status(400).json({
+        success: false,
+        error: 'Rank must be between 1 and 100000'
+      });
+    }
+
+    if (typeof budget !== 'number' || budget < 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Budget must be a positive number'
+      });
+    }
+
+    // --- Normalize weights ---
+    const normalizedWeights = normalizeWeights(weights);
+    const tier = getRankTier(rank);
+
+    // --- Query colleges within budget ---
+    let query = 'SELECT * FROM colleges WHERE fees <= $1';
+    const values = [budget];
+    let paramIndex = 2;
+
+    if (location) {
+      values.push(location);
+      query += ` AND LOWER(location) = LOWER($${paramIndex})`;
+      paramIndex++;
+    }
+
+    query += ' ORDER BY name ASC LIMIT 50';
+
+    const { rows } = await pool.query(query, values);
+
+    if (rows.length === 0) {
+      return res.json({
+        success: true,
+        count: 0,
+        data: [],
+        explanations: [],
+        weights: normalizedWeights,
+        message: 'No colleges match your criteria. Try increasing your budget.'
+      });
+    }
+
+    // --- Compute normalized scores ---
+    const maxRating = 5.0;
+    const maxPlacement = 100;
+    const maxFees = Math.max(...rows.map(c => c.fees));
+    const minFees = Math.min(...rows.map(c => c.fees));
+    const feeRange = maxFees - minFees || 1; // avoid division by zero
+
+    const scored = rows.map(college => {
+      // Normalize each factor to 0-1
+      const normalizedRating = college.rating / maxRating;
+      const normalizedPlacement = college.placement_percentage / maxPlacement;
+      const normalizedFees = (maxFees - college.fees) / feeRange; // higher = cheaper = better
+      const rankCompatibility = calculateRankCompatibility(college, rank);
+
+      // Weighted score
+      const score =
+        (normalizedRating * normalizedWeights.rating) +
+        (normalizedPlacement * normalizedWeights.placement) +
+        (normalizedFees * normalizedWeights.fees) +
+        (rankCompatibility * normalizedWeights.rankFit);
+
+      // Determine match level label
+      let matchLevel;
+      if (rankCompatibility >= 0.75) matchLevel = 'Excellent Match';
+      else if (rankCompatibility >= 0.55) matchLevel = 'Good Match';
+      else if (rankCompatibility >= 0.4) matchLevel = 'Moderate Match';
+      else matchLevel = 'Reach';
+
+      return {
+        ...college,
+        predictScore: Math.round(score * 1000) / 10, // score out of 100
+        rankCompatibility: Math.round(rankCompatibility * 100) / 100,
+        matchLevel,
+      };
+    });
+
+    // Sort by score descending
+    scored.sort((a, b) => b.predictScore - a.predictScore);
+
+    const top5 = scored.slice(0, 5);
+
+    // --- Generate explanations ---
+    const explanations = top5.map((college, idx) => {
+      const reasons = [];
+
+      // Rank fit
+      if (college.rankCompatibility >= 0.75) {
+        reasons.push(`excellent match for your rank (${tier.label})`);
+      } else if (college.rankCompatibility >= 0.55) {
+        reasons.push(`good fit for your rank (${tier.label})`);
+      } else if (college.rankCompatibility >= 0.4) {
+        reasons.push(`moderate fit for your rank (${tier.label})`);
+      } else {
+        reasons.push(`ambitious pick for your rank (${tier.label})`);
+      }
+
+      // Academic strengths
+      if (college.rating >= 4.5) reasons.push('excellent rating');
+      else if (college.rating >= 4.0) reasons.push('strong rating');
+
+      if (college.placement_percentage >= 90) reasons.push('top-tier placements');
+      else if (college.placement_percentage >= 85) reasons.push('strong placements');
+
+      // Value
+      if (college.fees <= budget * 0.6) reasons.push('well under budget');
+      else if (college.fees <= budget * 0.8) reasons.push('budget-friendly');
+
+      const reasonText = reasons.join(', ');
+      return `#${idx + 1} ${college.name}: ${reasonText} (Score: ${college.predictScore})`;
+    });
+
+    res.json({
+      success: true,
+      count: top5.length,
+      data: top5,
+      explanations,
+      weights: normalizedWeights,
+      rankTier: tier.label,
+    });
+
+  } catch (err) {
+    console.error('❌ ERROR predictColleges:', err.message);
+    res.status(500).json({
+      success: false,
+      error: 'Prediction failed. Please try again.'
+    });
+  }
+}
+
+module.exports = {
+  getColleges,
+  getCollegeById,
+  getLocations,
+  compareColleges,
+  predictColleges
+};
