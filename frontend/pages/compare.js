@@ -3,9 +3,11 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
+import Head from 'next/head';
 import Link from 'next/link';
 import Navbar from '../components/Navbar';
 import CompareTable from '../components/CompareTable';
+import CompareCharts from '../components/CompareCharts';
 import CompareInsights from '../components/CompareInsights';
 import { useCompare } from '../context/CompareContext';
 import { compareColleges } from '../lib/api';
@@ -49,6 +51,7 @@ export default function ComparePage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-indigo-50/50 to-white">
+        <Head><title>Compare Colleges — CollegeFind</title></Head>
         <Navbar />
         <div className="flex justify-center items-center py-16">
           <div className="flex flex-col items-center gap-3">
@@ -134,6 +137,12 @@ export default function ComparePage() {
 
         {/* Smart Insights */}
         <CompareInsights colleges={colleges} />
+
+        {/* Section Divider */}
+        <div className="h-px bg-gray-200 my-8" />
+
+        {/* Visual Charts */}
+        <CompareCharts colleges={colleges} />
 
         {/* Section Divider */}
         <div className="h-px bg-gray-200 my-8" />

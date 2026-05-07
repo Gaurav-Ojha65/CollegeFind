@@ -1,7 +1,14 @@
 // FILE: frontend/components/CollegeCard.js
-import { MapPin, IndianRupee, Star, TrendingUp, Check, Target } from 'lucide-react';
+import { MapPin, IndianRupee, Star, TrendingUp, Check, Target, Heart } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { useSaved } from '../context/SavedContext';
+import { useRouter } from 'next/router';
 
 export default function CollegeCard({ college, isSelected, onSelect, onViewDetails }) {
+  const { user } = useAuth();
+  const { toggleSaved, isSaved } = useSaved();
+  const router = useRouter();
+  const isCollegeSaved = isSaved(college.id);
   const formatFees = (fees) => {
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
@@ -61,19 +68,34 @@ export default function CollegeCard({ college, isSelected, onSelect, onViewDetai
           <h3 className="font-bold text-lg text-gray-900 line-clamp-2 group-hover:text-indigo-600 transition-colors">
             {college.name}
           </h3>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onSelect(college.id);
-            }}
-            className={`flex-shrink-0 w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all duration-200 ${
-              isSelected
-                ? 'bg-indigo-600 border-indigo-600 text-white scale-110'
-                : 'border-gray-300 hover:border-indigo-500 hover:bg-indigo-50'
-            }`}
-          >
-            {isSelected && <Check className="w-4 h-4" />}
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!user) {
+                  router.push('/login');
+                  return;
+                }
+                toggleSaved(college);
+              }}
+              className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center hover:bg-red-50 transition-colors"
+            >
+              <Heart className={`w-4 h-4 ${isCollegeSaved ? 'text-red-500 fill-red-500' : 'text-gray-400'}`} />
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelect(college.id);
+              }}
+              className={`flex-shrink-0 w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all duration-200 ${
+                isSelected
+                  ? 'bg-indigo-600 border-indigo-600 text-white scale-110'
+                  : 'border-gray-300 hover:border-indigo-500 hover:bg-indigo-50'
+              }`}
+            >
+              {isSelected && <Check className="w-4 h-4" />}
+            </button>
+          </div>
         </div>
 
         {/* Location */}

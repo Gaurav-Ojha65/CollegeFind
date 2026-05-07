@@ -7,7 +7,8 @@ dotenv.config();
 
 const app = express();
 const collegesRouter = require('./routes/colleges');
-const { compareColleges } = require('./controllers/collegeController');
+const authRouter = require('./routes/auth');
+const savedRouter = require('./routes/saved');
 const pool = require('./config/db');
 
 // DB connectivity check
@@ -35,7 +36,8 @@ app.use((req, res, next) => {
 
 // Routes
 app.use('/api/colleges', collegesRouter);
-app.post('/api/colleges/compare', compareColleges);
+app.use('/api/auth', authRouter);
+app.use('/api/saved', savedRouter);
 
 // 404 handler
 app.use((req, res) => {

@@ -118,6 +118,7 @@ async function getColleges(req, res) {
   }
 }
 
+// ENRICHED: Returns college + courses, cutoffs, placements, facilities
 async function getCollegeById(req, res) {
   try {
     const { id } = req.params;
@@ -126,18 +127,30 @@ async function getCollegeById(req, res) {
       return res.status(400).json({ success: false, error: 'Invalid ID' });
     }
 
-    const result = await pool.query(
-      'SELECT * FROM colleges WHERE id = $1',
-      [id]
-    );
+    // Parallel fetch all related data
+    const [collegeRes, coursesRes, cutoffsRes, placementsRes, facilitiesRes] = await Promise.all([
+      pool.query('SELECT * FROM colleges WHERE id = $1', [id]),
+      pool.query('SELECT * FROM courses WHERE college_id = $1 ORDER BY branch_name', [id]),
+      pool.query('SELECT * FROM cutoffs WHERE college_id = $1 ORDER BY year DESC, branch, exam_type, category', [id]),
+      pool.query('SELECT * FROM placements WHERE college_id = $1 ORDER BY branch', [id]),
+      pool.query('SELECT * FROM facilities WHERE college_id = $1', [id]),
+    ]);
 
-    if (result.rows.length === 0) {
+    if (collegeRes.rows.length === 0) {
       return res.status(404).json({ success: false, error: 'College not found' });
     }
 
+    const college = collegeRes.rows[0];
+
     res.json({
       success: true,
-      data: result.rows[0]
+      data: {
+        ...college,
+        courses: coursesRes.rows,
+        cutoffs: cutoffsRes.rows,
+        placements: placementsRes.rows,
+        facilities: facilitiesRes.rows[0] || null,
+      }
     });
 
   } catch (err) {
@@ -217,9 +230,10 @@ async function compareColleges(req, res) {
   }
 }
 
+// UPGRADED: Course-specific predictor with cutoff-based Safe/Moderate/Reach
 async function predictColleges(req, res) {
   try {
-    const { rank, budget, location, weights } = req.body;
+    const { rank, budget, location, weights, branch, examType, category } = req.body;
 
     // --- Input validation ---
     if (!rank || !budget) {
@@ -229,10 +243,10 @@ async function predictColleges(req, res) {
       });
     }
 
-    if (typeof rank !== 'number' || rank < 1 || rank > 100000) {
+    if (typeof rank !== 'number' || rank < 1 || rank > 200000) {
       return res.status(400).json({
         success: false,
-        error: 'Rank must be between 1 and 100000'
+        error: 'Rank must be between 1 and 200,000'
       });
     }
 
@@ -273,6 +287,37 @@ async function predictColleges(req, res) {
       });
     }
 
+    // --- If branch/examType/category provided, fetch cutoff data ---
+    let cutoffMap = {};
+    const useCutoffs = branch && examType && category;
+
+    if (useCutoffs) {
+      const collegeIds = rows.map(c => c.id);
+      const cutoffQuery = `
+        SELECT college_id, branch, exam_type, category, year, closing_rank
+        FROM cutoffs
+        WHERE college_id = ANY($1::int[])
+          AND LOWER(branch) = LOWER($2)
+          AND LOWER(exam_type) = LOWER($3)
+          AND LOWER(category) = LOWER($4)
+        ORDER BY year DESC
+      `;
+      const cutoffRes = await pool.query(cutoffQuery, [collegeIds, branch, examType, category]);
+
+      // Build map: college_id -> latest closing_rank
+      for (const row of cutoffRes.rows) {
+        if (!cutoffMap[row.college_id]) {
+          cutoffMap[row.college_id] = {
+            closingRank: row.closing_rank,
+            year: row.year,
+            branch: row.branch,
+            examType: row.exam_type,
+            category: row.category,
+          };
+        }
+      }
+    }
+
     // --- Compute normalized scores ---
     const maxRating = 5.0;
     const maxPlacement = 100;
@@ -294,7 +339,34 @@ async function predictColleges(req, res) {
         (normalizedFees * normalizedWeights.fees) +
         (rankCompatibility * normalizedWeights.rankFit);
 
-      // Determine match level label
+      // --- Cutoff-based confidence label ---
+      let confidence = null;
+      let cutoffInfo = null;
+      let reasoning = '';
+
+      if (useCutoffs && cutoffMap[college.id]) {
+        cutoffInfo = cutoffMap[college.id];
+        const closingRank = cutoffInfo.closingRank;
+
+        if (rank <= closingRank * 0.7) {
+          confidence = 'Safe';
+          reasoning = `Your rank ${rank} is well within the ${cutoffInfo.year} closing rank of ${closingRank} for ${cutoffInfo.branch} (${cutoffInfo.category}).`;
+        } else if (rank <= closingRank) {
+          confidence = 'Moderate';
+          reasoning = `Your rank ${rank} is close to the ${cutoffInfo.year} closing rank of ${closingRank} for ${cutoffInfo.branch} (${cutoffInfo.category}) — competitive but possible.`;
+        } else if (rank <= closingRank * 1.15) {
+          confidence = 'Reach';
+          reasoning = `Your rank ${rank} slightly exceeds the ${cutoffInfo.year} closing rank of ${closingRank} for ${cutoffInfo.branch} (${cutoffInfo.category}) — an ambitious pick.`;
+        } else {
+          confidence = 'Unlikely';
+          reasoning = `Your rank ${rank} is above the ${cutoffInfo.year} closing rank of ${closingRank} for ${cutoffInfo.branch} (${cutoffInfo.category}).`;
+        }
+      } else if (useCutoffs) {
+        confidence = 'No Data';
+        reasoning = `No cutoff data found for ${branch} via ${examType} (${category}) at this college.`;
+      }
+
+      // Determine match level label (general, non-cutoff)
       let matchLevel;
       if (rankCompatibility >= 0.75) matchLevel = 'Excellent Match';
       else if (rankCompatibility >= 0.55) matchLevel = 'Good Match';
@@ -306,17 +378,35 @@ async function predictColleges(req, res) {
         predictScore: Math.round(score * 1000) / 10, // score out of 100
         rankCompatibility: Math.round(rankCompatibility * 100) / 100,
         matchLevel,
+        confidence,
+        cutoffClosingRank: cutoffInfo ? cutoffInfo.closingRank : null,
+        cutoffYear: cutoffInfo ? cutoffInfo.year : null,
+        reasoning,
       };
     });
 
-    // Sort by score descending
-    scored.sort((a, b) => b.predictScore - a.predictScore);
+    // Sort: if using cutoffs, prioritize Safe > Moderate > Reach > Unlikely, then by score
+    if (useCutoffs) {
+      const confOrder = { 'Safe': 0, 'Moderate': 1, 'Reach': 2, 'No Data': 3, 'Unlikely': 4 };
+      scored.sort((a, b) => {
+        const oa = confOrder[a.confidence] ?? 5;
+        const ob = confOrder[b.confidence] ?? 5;
+        if (oa !== ob) return oa - ob;
+        return b.predictScore - a.predictScore;
+      });
+    } else {
+      scored.sort((a, b) => b.predictScore - a.predictScore);
+    }
 
-    const top5 = scored.slice(0, 5);
+    const top = scored.slice(0, 10);
 
     // --- Generate explanations ---
-    const explanations = top5.map((college, idx) => {
+    const explanations = top.map((college, idx) => {
       const reasons = [];
+
+      if (college.confidence && college.confidence !== 'No Data') {
+        reasons.push(`${college.confidence} choice`);
+      }
 
       // Rank fit
       if (college.rankCompatibility >= 0.75) {
@@ -346,8 +436,8 @@ async function predictColleges(req, res) {
 
     res.json({
       success: true,
-      count: top5.length,
-      data: top5,
+      count: top.length,
+      data: top,
       explanations,
       weights: normalizedWeights,
       rankTier: tier.label,
@@ -362,10 +452,34 @@ async function predictColleges(req, res) {
   }
 }
 
+// NEW: Get available branches for predictor dropdown
+async function getBranches(req, res) {
+  try {
+    const result = await pool.query('SELECT DISTINCT branch FROM cutoffs ORDER BY branch ASC');
+    res.json({ success: true, data: result.rows.map(r => r.branch) });
+  } catch (err) {
+    console.error('❌ ERROR getBranches:', err.message);
+    res.status(500).json({ success: false, error: 'Failed to fetch branches.' });
+  }
+}
+
+// NEW: Get available exam types
+async function getExamTypes(req, res) {
+  try {
+    const result = await pool.query('SELECT DISTINCT exam_type FROM cutoffs ORDER BY exam_type ASC');
+    res.json({ success: true, data: result.rows.map(r => r.exam_type) });
+  } catch (err) {
+    console.error('❌ ERROR getExamTypes:', err.message);
+    res.status(500).json({ success: false, error: 'Failed to fetch exam types.' });
+  }
+}
+
 module.exports = {
   getColleges,
   getCollegeById,
   getLocations,
   compareColleges,
-  predictColleges
+  predictColleges,
+  getBranches,
+  getExamTypes,
 };

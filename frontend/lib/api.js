@@ -60,12 +60,12 @@ async function compareColleges(collegeIds) {
   }
 }
 
-async function predictColleges({ rank, budget, location, weights }) {
+async function predictColleges({ rank, budget, location, weights, branch, examType, category }) {
   try {
     const response = await fetch(`${API_URL}/api/colleges/predict`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rank, budget, location, weights }),
+      body: JSON.stringify({ rank, budget, location, weights, branch, examType, category }),
     });
 
     const data = await response.json();
@@ -102,4 +102,44 @@ async function fetchLocations() {
   }
 }
 
-module.exports = { fetchColleges, fetchCollege, compareColleges, predictColleges, fetchLocations };
+async function fetchBranches() {
+  try {
+    const response = await fetch(`${API_URL}/api/colleges/branches`);
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'API error');
+    }
+
+    return data.data;
+  } catch (err) {
+    console.error('Error fetching branches:', err);
+    throw err;
+  }
+}
+
+async function fetchExamTypes() {
+  try {
+    const response = await fetch(`${API_URL}/api/colleges/exam-types`);
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'API error');
+    }
+
+    return data.data;
+  } catch (err) {
+    console.error('Error fetching exam types:', err);
+    throw err;
+  }
+}
+
+module.exports = {
+  fetchColleges,
+  fetchCollege,
+  compareColleges,
+  predictColleges,
+  fetchLocations,
+  fetchBranches,
+  fetchExamTypes,
+};

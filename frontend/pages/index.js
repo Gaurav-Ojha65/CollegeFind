@@ -3,6 +3,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/router';
+import Head from 'next/head';
 import Navbar from '../components/Navbar';
 import SearchBar from '../components/SearchBar';
 import Filters from '../components/Filters';
@@ -10,7 +11,7 @@ import CollegeCard from '../components/CollegeCard';
 import CompareBar from '../components/CompareBar';
 import { useCompare } from '../context/CompareContext';
 import { fetchColleges } from '../lib/api';
-import { Loader2, Inbox, ArrowUpDown, TrendingUp, Star } from 'lucide-react';
+import { Loader2, Inbox, ArrowUpDown, TrendingUp, Star, Filter, X } from 'lucide-react';
 import SkeletonCard from '../components/SkeletonCard';
 
 export default function HomePage() {
@@ -24,6 +25,7 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [locationOptions, setLocationOptions] = useState([]);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
 
   const loadColleges = useCallback(async (searchVal = search, locationVal = location, maxFeesVal = maxFees) => {
     setLoading(true);
@@ -91,6 +93,10 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-indigo-50/50 to-white">
+      <Head>
+        <title>CollegeFind — Discover Your Perfect College</title>
+        <meta name="description" content="Compare top engineering colleges across India. Filter by fees, rating, placement rate, and location. Find your best fit." />
+      </Head>
       <Navbar />
 
       <main id="main-content" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -106,34 +112,70 @@ export default function HomePage() {
 
         {/* Search & Filters */}
         <div className="space-y-4 mb-6">
-          <SearchBar value={search} onChange={setSearch} onSearch={handleSearch} />
-          <div className="flex flex-wrap gap-4">
-            <Filters
-              location={location}
-              maxFees={maxFees}
-              onLocationChange={setLocation}
-              onMaxFeesChange={setMaxFees}
-              onReset={handleReset}
-              locationOptions={locationOptions}
-            />
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <SearchBar value={search} onChange={setSearch} onSearch={handleSearch} />
+            </div>
+            <button
+              onClick={() => setIsFilterOpen(true)}
+              className="md:hidden flex items-center justify-center px-4 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors"
+            >
+              <Filter className="w-5 h-5" />
+            </button>
+          </div>
 
-            {/* Sort Dropdown */}
-            <div>
-              <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-                <ArrowUpDown className="w-4 h-4" />
-                Sort By
-              </label>
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-                className="px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white cursor-pointer transition-all"
+          {/* Mobile Drawer Overlay */}
+          {isFilterOpen && (
+            <div className="fixed inset-0 bg-black/50 z-40 md:hidden transition-opacity" onClick={() => setIsFilterOpen(false)} />
+          )}
+
+          {/* Filters Container (Drawer on Mobile, Row on Desktop) */}
+          <div className={`fixed inset-y-0 right-0 z-50 w-full max-w-xs bg-white p-6 shadow-xl transform transition-transform duration-300 ease-in-out md:relative md:transform-none md:p-0 md:bg-transparent md:w-auto md:max-w-none md:shadow-none md:z-auto ${isFilterOpen ? 'translate-x-0' : 'translate-x-full md:translate-x-0'}`}>
+            <div className="flex justify-between items-center mb-6 md:hidden">
+              <h2 className="text-xl font-bold text-gray-900">Filters</h2>
+              <button onClick={() => setIsFilterOpen(false)} className="p-2 text-gray-500 hover:bg-gray-100 rounded-full">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex flex-col md:flex-row flex-wrap gap-4">
+              <Filters
+                location={location}
+                maxFees={maxFees}
+                onLocationChange={setLocation}
+                onMaxFeesChange={setMaxFees}
+                onReset={handleReset}
+                locationOptions={locationOptions}
+              />
+
+              {/* Sort Dropdown */}
+              <div className="w-full md:w-auto mt-4 md:mt-0">
+                <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                  <ArrowUpDown className="w-4 h-4" />
+                  Sort By
+                </label>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="w-full md:w-auto px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white cursor-pointer transition-all"
+                >
+                  <option value="name">Name (A-Z)</option>
+                  <option value="rating-desc">⭐ Highest Rating</option>
+                  <option value="fees-asc">💰 Lowest Fees</option>
+                  <option value="fees-desc">💰 Highest Fees</option>
+                  <option value="placement-desc">📈 Best Placement</option>
+                </select>
+              </div>
+            </div>
+            
+            {/* Mobile Apply Button */}
+            <div className="mt-8 md:hidden">
+              <button 
+                onClick={() => setIsFilterOpen(false)}
+                className="w-full py-3 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 transition-colors"
               >
-                <option value="name">Name (A-Z)</option>
-                <option value="rating-desc">⭐ Highest Rating</option>
-                <option value="fees-asc">💰 Lowest Fees</option>
-                <option value="fees-desc">💰 Highest Fees</option>
-                <option value="placement-desc">📈 Best Placement</option>
-              </select>
+                Apply Filters
+              </button>
             </div>
           </div>
         </div>
