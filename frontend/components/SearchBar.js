@@ -1,5 +1,5 @@
 // FILE: frontend/components/SearchBar.js
-import { Search, X } from 'lucide-react';
+import { Search, X, Sparkles } from 'lucide-react';
 
 export default function SearchBar({ value, onChange, onSearch }) {
   const handleKeyPress = (e) => {
@@ -9,21 +9,21 @@ export default function SearchBar({ value, onChange, onSearch }) {
   };
 
   return (
-    <div className="relative flex gap-2">
+    <div className="relative flex gap-3">
       <div className="relative flex-1">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
         <input
           type="text"
           placeholder="Search colleges by name..."
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onKeyPress={handleKeyPress}
-          className="w-full pl-10 pr-10 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+          className="w-full pl-12 pr-10 py-3.5 bg-slate-800/60 border border-slate-700/50 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
         />
         {value && (
           <button
             onClick={() => onChange('')}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors p-1 rounded-lg hover:bg-slate-700"
           >
             <X className="w-4 h-4" />
           </button>
@@ -31,8 +31,9 @@ export default function SearchBar({ value, onChange, onSearch }) {
       </div>
       <button
         onClick={onSearch}
-        className="px-6 py-3 bg-indigo-600 text-white font-medium rounded-xl hover:bg-indigo-700 transition-colors"
+        className="btn-premium flex items-center gap-2 px-6 py-3.5 bg-gradient-to-r from-indigo-600 to-violet-600 text-white font-semibold rounded-xl shadow-lg shadow-indigo-500/15 hover:shadow-indigo-500/30 hover:scale-105 transition-all duration-300"
       >
+        <Sparkles className="w-4 h-4" />
         Search
       </button>
     </div>

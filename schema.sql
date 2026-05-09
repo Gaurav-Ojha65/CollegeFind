@@ -7,7 +7,8 @@ CREATE TABLE IF NOT EXISTS colleges (
   location VARCHAR(255) NOT NULL,
   fees INTEGER NOT NULL,
   rating DECIMAL(3,1) NOT NULL,
-  placement_percentage INTEGER NOT NULL
+  placement_percentage INTEGER NOT NULL,
+  website_url VARCHAR(255) DEFAULT 'https://example.edu'
 );
 
 INSERT INTO colleges (name, location, fees, rating, placement_percentage) VALUES

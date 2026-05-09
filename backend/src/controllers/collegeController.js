@@ -35,13 +35,27 @@ function calculateRankCompatibility(college, rank) {
   const ratingDiff = college.rating - tier.expectedRating;
   const placementDiff = college.placement_percentage - tier.expectedPlacement;
 
-  // Positive diff = college exceeds expectations, negative = below
-  // Normalize to 0-1 range. Colleges meeting or exceeding expectations get 0.7-1.0
-  const ratingFit = Math.max(0, Math.min(1, 0.5 + (ratingDiff / 2)));
-  const placementFit = Math.max(0, Math.min(1, 0.5 + (placementDiff / 30)));
+  // We want the fit to be highest (1.0) when the college matches the tier.
+  let ratingFit = 1.0;
+  if (ratingDiff > 0) {
+    // College is better than the student's tier expects -> reach/unlikely.
+    // Sharp penalty: if rating is 0.5 higher, fit drops significantly.
+    ratingFit = Math.max(0, 1.0 - (ratingDiff * 1.5));
+  } else {
+    // College is worse -> safe. Gentle penalty so they still show up.
+    // If rating is 1.0 lower, fit drops somewhat.
+    ratingFit = Math.max(0, 1.0 + (ratingDiff * 0.5));
+  }
 
-  // Penalize overreach: if rank is very high (e.g., 80000) but college expects top-tier,
-  // the fit should be lower. This is already handled since ratingDiff will be negative.
+  let placementFit = 1.0;
+  if (placementDiff > 0) {
+    // Sharp penalty for overreaching
+    placementFit = Math.max(0, 1.0 - (placementDiff / 15));
+  } else {
+    // Gentle penalty for being safe
+    placementFit = Math.max(0, 1.0 + (placementDiff / 40));
+  }
+
   return (ratingFit * 0.5) + (placementFit * 0.5);
 }
 
@@ -272,6 +286,30 @@ async function predictColleges(req, res) {
       paramIndex++;
     }
 
+    if (examType || branch) {
+      let existsQuery = 'SELECT 1 FROM cutoffs WHERE cutoffs.college_id = colleges.id';
+      
+      if (examType) {
+        values.push(examType);
+        existsQuery += ` AND LOWER(cutoffs.exam_type) = LOWER($${paramIndex})`;
+        paramIndex++;
+      }
+      
+      if (branch) {
+        values.push(branch);
+        existsQuery += ` AND LOWER(cutoffs.branch) = LOWER($${paramIndex})`;
+        paramIndex++;
+      }
+      
+      if (category) {
+        values.push(category);
+        existsQuery += ` AND LOWER(cutoffs.category) = LOWER($${paramIndex})`;
+        paramIndex++;
+      }
+      
+      query += ` AND EXISTS (${existsQuery})`;
+    }
+
     query += ' ORDER BY name ASC LIMIT 50';
 
     const { rows } = await pool.query(query, values);
@@ -321,16 +359,38 @@ async function predictColleges(req, res) {
     // --- Compute normalized scores ---
     const maxRating = 5.0;
     const maxPlacement = 100;
-    const maxFees = Math.max(...rows.map(c => c.fees));
-    const minFees = Math.min(...rows.map(c => c.fees));
-    const feeRange = maxFees - minFees || 1; // avoid division by zero
 
+    // Use budget-relative fee scoring instead of min-max normalization
+    // This prevents the cheapest college from always getting a perfect score
     const scored = rows.map(college => {
       // Normalize each factor to 0-1
       const normalizedRating = college.rating / maxRating;
       const normalizedPlacement = college.placement_percentage / maxPlacement;
-      const normalizedFees = (maxFees - college.fees) / feeRange; // higher = cheaper = better
-      const rankCompatibility = calculateRankCompatibility(college, rank);
+
+      // Budget-relative fee score: how much budget headroom you have
+      // A college at 50% of budget scores ~0.75, at 100% scores ~0.5, at 10% scores ~0.9
+      // This rewards affordability without giving a perfect 1.0 just for being cheapest
+      const feeRatio = college.fees / budget;
+      const normalizedFees = Math.max(0, 1 - feeRatio);
+
+      // Enhanced rank compatibility that uses cutoff data when available
+      let rankCompatibility = calculateRankCompatibility(college, rank);
+
+      // If we have cutoff data, blend actual cutoff fit into rank compatibility
+      if (useCutoffs && cutoffMap[college.id]) {
+        const closingRank = cutoffMap[college.id].closingRank;
+        // How well does the student's rank fit the cutoff? 
+        // rank/closingRank < 1 = good fit, > 1 = poor fit
+        const cutoffRatio = rank / closingRank;
+        let cutoffFit;
+        if (cutoffRatio <= 0.5) cutoffFit = 0.95;      // very safe
+        else if (cutoffRatio <= 0.7) cutoffFit = 0.85;  // safe
+        else if (cutoffRatio <= 1.0) cutoffFit = 0.7;   // moderate
+        else if (cutoffRatio <= 1.15) cutoffFit = 0.4;  // reach
+        else cutoffFit = 0.15;                           // unlikely
+        // Blend: 70% cutoff-based, 30% general compatibility
+        rankCompatibility = (cutoffFit * 0.7) + (rankCompatibility * 0.3);
+      }
 
       // Weighted score
       const score =
