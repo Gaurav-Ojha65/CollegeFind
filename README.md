@@ -1,94 +1,92 @@
-# 🎓 College Discovery Platform
+# CollegeFind
 
-A modern full-stack web application that helps students explore, compare, and predict colleges based on rankings, fees, placements, and courses.
+A deployed full-stack college discovery platform for searching, comparing, and evaluating colleges using fees, placements, rankings, courses, and historical cutoff data.
 
----
+## Live system
 
-## 🌐 Live Demo
+- **Frontend:** https://college-find-one.vercel.app
+- **Backend API:** https://college-dp.onrender.com/api/colleges
 
-**Frontend (Vercel):** [https://college-find-one.vercel.app](https://college-find-one.vercel.app)
+## Why this project?
 
-**Backend API (Render):** [https://college-dp.onrender.com/api/colleges](https://college-dp.onrender.com/api/colleges)
+Students often need to compare colleges across multiple factors rather than rely on a single ranking. CollegeFind combines search, comparison, cutoff-based prediction, authentication, saved colleges, and ROI calculations into one application.
 
----
+## Architecture
 
-## 🚀 Features
-
-* **College search and filtering:** Advanced filters by location, max budget, and name.
-* **College comparison system:** Interactive side-by-side comparison featuring Recharts (Radar & Bar charts) for fees, rating, and placements.
-* **Rank predictor:** Smart prediction engine with course-level cutoff analysis. Identifies Safe, Moderate, and Reach colleges using historical closing ranks, exam types (JEE Main, JEE Advanced, WBJEE, etc.), and categories.
-* **Real-time backend API integration:** Node.js/Express REST API handling complex queries and math.
-* **PostgreSQL database integration:** Hosted on Supabase with a robust relational schema (Colleges, Courses, Cutoffs, Placements, Facilities, Users).
-* **Responsive modern UI:** Premium dark-theme aesthetics with glassmorphism, responsive grids, and micro-animations using Tailwind CSS.
-* **Full-stack deployment:** Frontend deployed on Vercel; Backend hosted on Render.
-* **Authentication System:** Secure JWT-based user authentication (Login/Signup) with hashed passwords.
-* **Saved Bookmarks:** Authenticated users can bookmark colleges to their profile.
-* **ROI Calculator:** Built-in tool estimating loan payback time based on branch-specific average placement packages.
-* **Official Website Integration:** Direct links to official college websites with an intelligent fallback to automated Google Search queries.
-
----
-
-## 🧱 Tech Stack
-
-### Frontend
-* Next.js 14 (React 18)
-* Tailwind CSS (Glassmorphism & Custom Animations)
-* Recharts (Data Visualization)
-* Lucide React (Icons)
-* Context API (State Management)
-
-### Backend
-* Node.js & Express.js
-* PostgreSQL (via Supabase)
-* JSON Web Tokens (JWT) & bcrypt (Authentication)
-* REST APIs
-
----
-
-## 📂 Project Structure
-
+```text
+Next.js Frontend
+      │
+      │ REST / JSON
+      ▼
+Node.js + Express API
+      │
+      ├── Authentication / JWT
+      ├── College search & filters
+      ├── Comparison / predictor logic
+      └── Saved-college APIs
+      │
+      ▼
+PostgreSQL / Supabase
+      │
+      ├── Colleges
+      ├── Courses
+      ├── Cutoffs
+      ├── Placements
+      ├── Facilities
+      └── Users
 ```
+
+## Key engineering features
+
+- Search and filtering by location, budget, and college name.
+- Side-by-side college comparison with Recharts visualizations.
+- Rank predictor using historical closing ranks, course, category, and exam type to classify colleges as Safe, Moderate, or Reach.
+- JWT authentication with hashed passwords.
+- Saved/bookmarked colleges for authenticated users.
+- PostgreSQL relational schema hosted through Supabase.
+- Separate deployed frontend and backend services.
+- Request logging and centralized Express error handling in the backend.
+
+## Tech stack
+
+| Layer | Technologies |
+|---|---|
+| Frontend | Next.js 14, React 18, Tailwind CSS, Recharts, Lucide React |
+| Backend | Node.js, Express.js, REST APIs |
+| Database | PostgreSQL / Supabase |
+| Authentication | JWT, bcrypt |
+| Deployment | Vercel, Render |
+
+## Repository structure
+
+```text
 CollegeFind/
-│
 ├── backend/
-│   ├── src/
-│   │   ├── controllers/
-│   │   ├── routes/
-│   │   ├── config/
-│   │   ├── middleware/ (Auth)
-│   │   └── app.js
-│
+│   └── src/
+│       ├── config/
+│       ├── controllers/
+│       ├── middleware/
+│       └── routes/
 ├── frontend/
-│   ├── pages/ (index, predict, compare, dashboard, login, signup, college/[id])
 │   ├── components/
 │   ├── context/
-│   └── lib/ (api client)
-│
-├── schema_v2.sql (DB Schema)
+│   ├── lib/
+│   └── pages/
+├── DEPLOYMENT.md
+├── schema_v2.sql
 └── README.md
 ```
 
----
+## Run locally
 
-## ⚙️ Setup Instructions
-
-### 1️⃣ Clone Repository
-
-```bash
-git clone https://github.com/Gaurav-Ojha65/CollegeFind.git
-cd CollegeFind
-```
-
----
-
-### 2️⃣ Backend Setup
+### Backend
 
 ```bash
 cd backend
 npm install
 ```
 
-Create a `.env` file inside `backend`:
+Create `backend/.env`:
 
 ```env
 PORT=5000
@@ -101,39 +99,43 @@ JWT_SECRET=your_jwt_secret
 FRONTEND_URL=http://localhost:3000
 ```
 
-Run backend:
+Then run:
 
 ```bash
 npm run dev
 ```
 
----
-
-### 3️⃣ Frontend Setup
+### Frontend
 
 ```bash
 cd frontend
 npm install
 ```
 
-Create a `.env.local` file inside `frontend`:
+Create `.env.local`:
 
 ```env
 NEXT_PUBLIC_API_URL=http://localhost:5000
 ```
 
-Run frontend:
+Then run:
 
 ```bash
 npm run dev
 ```
 
----
+## Security notes
 
-## 👨‍💻 Author
+- Secrets are supplied through environment variables rather than committed configuration.
+- Authentication uses JWT and bcrypt.
+- Backend routes include authentication middleware for protected operations.
+- Do not commit real database credentials or JWT secrets.
 
-Gaurav Ojha
+## Engineering focus
 
----
+This is primarily a **full-stack engineering project** demonstrating API design, relational data modeling, authentication, frontend state/UI integration, deployment, and application-level business logic.
 
-## ⭐ If you found this useful, consider giving it a star!
+## Author
+
+**Gaurav Ojha**  
+Computer Science student focused on software engineering, backend systems, cloud infrastructure, and practical AI/ML.
