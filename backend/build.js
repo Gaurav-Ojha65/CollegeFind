@@ -7,7 +7,7 @@ const backendPublicDir = path.join(__dirname, 'public');
 
 console.log('--- CollegeFind Unified Build ---');
 console.log('1. Installing frontend dependencies...');
-execSync('npm install', { cwd: frontendDir, stdio: 'inherit' });
+execSync('npm install --production=false', { cwd: frontendDir, stdio: 'inherit' });
 
 console.log('2. Building frontend statically...');
 execSync('npm run build', { cwd: frontendDir, stdio: 'inherit' });
