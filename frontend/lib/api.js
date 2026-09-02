@@ -1,5 +1,5 @@
 // FILE: frontend/lib/api.js
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
 async function fetchColleges({ search = '', location = '', maxFees = '' } = {}) {
   try {

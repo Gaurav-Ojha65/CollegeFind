@@ -287,27 +287,27 @@ async function predictColleges(req, res) {
     }
 
     if (examType || branch) {
-      let existsQuery = 'SELECT 1 FROM cutoffs WHERE cutoffs.college_id = colleges.id';
+      let subQuery = 'SELECT college_id FROM cutoffs WHERE 1=1';
       
       if (examType) {
         values.push(examType);
-        existsQuery += ` AND LOWER(cutoffs.exam_type) = LOWER($${paramIndex})`;
+        subQuery += ` AND LOWER(exam_type) = LOWER($${paramIndex})`;
         paramIndex++;
       }
       
       if (branch) {
         values.push(branch);
-        existsQuery += ` AND LOWER(cutoffs.branch) = LOWER($${paramIndex})`;
+        subQuery += ` AND LOWER(branch) = LOWER($${paramIndex})`;
         paramIndex++;
       }
       
       if (category) {
         values.push(category);
-        existsQuery += ` AND LOWER(cutoffs.category) = LOWER($${paramIndex})`;
+        subQuery += ` AND LOWER(category) = LOWER($${paramIndex})`;
         paramIndex++;
       }
       
-      query += ` AND EXISTS (${existsQuery})`;
+      query += ` AND id IN (${subQuery})`;
     }
 
     query += ' ORDER BY name ASC LIMIT 50';
