@@ -58,7 +58,12 @@ app.use('/api', (req, res) => {
 
 // Catch-all route to serve React app for non-API routes
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../public/index.html'));
+  res.sendFile(path.join(__dirname, '../public/index.html'), (err) => {
+    if (err) {
+      console.error('Error sending index.html:', err);
+      res.status(500).send('Frontend is currently building or unavailable.');
+    }
+  });
 });
 
 // Global error handler
