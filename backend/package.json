@@ -1,11 +1,12 @@
-{
+﻿{
   "name": "college-backend",
   "version": "1.0.0",
   "main": "src/app.js",
   "scripts": {
     "start": "node src/app.js",
     "dev": "nodemon src/app.js",
-    "build": "node build.js"
+    "build": "node build.js",
+    "postinstall": "npm run build"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
@@ -19,8 +20,5 @@
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
-  },
-  "engines": {
-    "node": ">=18.17.0"
   }
 }

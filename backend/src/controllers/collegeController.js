@@ -127,7 +127,7 @@ async function getColleges(req, res) {
     console.error('❌ ERROR getColleges:', err.message);
     res.status(500).json({
       success: false,
-      error: 'Failed to fetch colleges. Please try again.'
+      error: 'Failed to fetch colleges. Please try again.', details: err.message
     });
   }
 }
@@ -543,3 +543,4 @@ module.exports = {
   getBranches,
   getExamTypes,
 };
+
