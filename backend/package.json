@@ -5,8 +5,7 @@
   "scripts": {
     "start": "node src/app.js",
     "dev": "nodemon src/app.js",
-    "build": "node build.js",
-    "postinstall": "npm run build"
+    "build": "node build.js"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
